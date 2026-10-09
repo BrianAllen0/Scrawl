@@ -1,23 +1,28 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useRef, useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
-import Animated, { Easing, Keyframe } from 'react-native-reanimated';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { memo, useCallback, useRef, useState } from 'react';
+import { Pressable, StyleSheet, View, type FlatList } from 'react-native';
+import Animated, { Easing, Keyframe, useAnimatedScrollHandler } from 'react-native-reanimated';
+import ReorderableList, {
+  reorderItems,
+  useReorderableDrag,
+  type ReorderableListReorderEvent,
+} from 'react-native-reorderable-list';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { IconButton } from '@/components/icon-button';
 import { MarkdownText } from '@/components/markdown-text';
 import { Screen } from '@/components/screen';
+import { SelectionActions } from '@/components/selection-actions';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { REORDER_AUTOSCROLL } from '@/constants/reorder';
 import { Spacing } from '@/constants/theme';
-import { createNote, deleteEmptyNotes, listNotes, type Note } from '@/lib/notes';
+import { useSelection } from '@/hooks/use-selection';
+import { useTheme } from '@/hooks/use-theme';
+import { saveOrder } from '@/lib/db';
+import { createNote, deleteEmptyNotes, deleteNotes, listNotes, type Note } from '@/lib/notes';
 
 // Every row has a fixed height so the scroll offset maps straight to the note in first position.
 const ROW_HEIGHT = 56;
@@ -51,12 +56,18 @@ const EXIT_DOWNWARD = roll(0, CARD_HEIGHT);
  * and letting go there settles it into first position. Without that, the card would follow scroll
  * distance alone, and since the card is ~3 rows tall the notes behind the dragged one would take
  * over before it got far into the card.
+ *
+ * Rows also have a drag handle to reorder (dropping a note into the card makes it the first note)
+ * and a long press to select notes for deletion, as on the other tabs.
  */
 export default function NotesScreen() {
   const db = useSQLiteContext();
+  const theme = useTheme();
   const [notes, setNotes] = useState<Note[]>([]);
   const [first, setFirst] = useState({ index: 0, direction: 1 });
   const [listHeight, setListHeight] = useState(0);
+
+  const { selected, selecting, toggle: toggleSelected, clear: clearSelection } = useSelection();
 
   const listRef = useRef<FlatList<Note>>(null);
   const offset = useRef(0);
@@ -93,8 +104,8 @@ export default function NotesScreen() {
     return rowTop < CARD_HEIGHT && rowTop + ROW_HEIGHT > 0;
   }
 
-  function onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
-    offset.current = event.nativeEvent.contentOffset.y;
+  function onScroll(y: number) {
+    offset.current = y;
     if (anchorInCard()) {
       show(anchor.current!);
       // Once the post-release glide has landed, hand back to the scroll-position rule.
@@ -106,7 +117,7 @@ export default function NotesScreen() {
     }
   }
 
-  function onScrollEndDrag(event: NativeSyntheticEvent<NativeScrollEvent>) {
+  function onScrollEndDrag(velocity: number) {
     dragging.current = false;
     if (anchorInCard()) {
       // Dropped inside the card: settle the carried note into first position.
@@ -115,12 +126,49 @@ export default function NotesScreen() {
     }
     anchor.current = null;
     // A slow release snaps now; a fling coasts first and snaps in onMomentumScrollEnd.
-    if (Math.abs(event.nativeEvent.velocity?.y ?? 0) < FLING_VELOCITY) scrollToIndex(nearestIndex());
+    if (Math.abs(velocity) < FLING_VELOCITY) scrollToIndex(nearestIndex());
   }
 
   function onMomentumScrollEnd() {
     if (anchor.current !== null) return; // still gliding a dropped note into place
     if (Math.abs(offset.current - nearestIndex() * ROW_STRIDE) >= 1) scrollToIndex(nearestIndex());
+  }
+
+  // The reorder list only takes a Reanimated scroll handler, which runs on the UI thread; hop back to
+  // JS for the card logic. Deps: the callbacks read notes.length (via nearestIndex).
+  const scrollHandler = useAnimatedScrollHandler(
+    {
+      onScroll: (e) => scheduleOnRN(onScroll, e.contentOffset.y),
+      onBeginDrag: () => scheduleOnRN(onScrollBeginDrag),
+      onEndDrag: (e) => scheduleOnRN(onScrollEndDrag, e.velocity?.y ?? 0),
+      onMomentumEnd: () => scheduleOnRN(onMomentumScrollEnd),
+    },
+    [notes.length],
+  );
+
+  function onScrollBeginDrag() {
+    dragging.current = true;
+  }
+
+  const open = useCallback((id: number) => router.push(`/note/${id}`), []);
+  const touchRow = useCallback((index: number) => (touchedRow.current = index), []);
+
+  function reorder({ from, to }: ReorderableListReorderEvent) {
+    const next = reorderItems(notes, from, to);
+    setNotes(next);
+    saveOrder(
+      db,
+      'notes',
+      next.map((n) => n.id),
+    );
+    // Autoscroll during the drag can leave the list between notes; settle on the nearest one.
+    scrollToIndex(nearestIndex());
+  }
+
+  function deleteSelected() {
+    setNotes((list) => list.filter((n) => !selected.has(n.id)));
+    deleteNotes(db, [...selected]);
+    clearSelection();
   }
 
   async function addNote() {
@@ -131,11 +179,23 @@ export default function NotesScreen() {
   // Clamp in case notes were deleted while the list was scrolled down.
   const firstNote = notes[Math.min(first.index, notes.length - 1)];
   const scrollingDown = first.direction > 0;
+  const firstSelected = !!firstNote && selected.has(firstNote.id);
 
   return (
     <Screen
-      title="Notes"
-      actions={<IconButton icon="add" label="New note" onPress={addNote} />}>
+      title={selecting ? `${selected.size} selected` : 'Notes'}
+      actions={
+        selecting ? (
+          <SelectionActions
+            count={selected.size}
+            noun={['note', 'notes']}
+            onCancel={clearSelection}
+            onDelete={deleteSelected}
+          />
+        ) : (
+          <IconButton icon="add" label="New note" onPress={addNote} />
+        )
+      }>
       <View
         style={styles.listArea}
         // Touch events bubble, so the touched row has recorded itself by the time this runs. A touch
@@ -145,15 +205,16 @@ export default function NotesScreen() {
           touchedRow.current = null;
         }}
         onLayout={(e) => setListHeight(e.nativeEvent.layout.height)}>
-        <FlatList
+        <ReorderableList
           ref={listRef}
           data={notes}
           keyExtractor={(note) => String(note.id)}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          onScrollBeginDrag={() => (dragging.current = true)}
-          onScrollEndDrag={onScrollEndDrag}
-          onMomentumScrollEnd={onMomentumScrollEnd}
+          onReorder={reorder}
+          dragEnabled={!selecting}
+          {...REORDER_AUTOSCROLL}
+          // The top autoscroll zone starts below the card, which covers the top of the list.
+          autoscrollThresholdOffset={{ start: CARD_HEIGHT }}
+          onScroll={scrollHandler}
           decelerationRate="fast"
           contentContainerStyle={{
             // The first-position row sits hidden behind the card; the next row starts just below it.
@@ -161,38 +222,52 @@ export default function NotesScreen() {
             // Enough room at the end for the last note to scroll up into first position.
             paddingBottom: Math.max(0, listHeight - PREVIEW_HEIGHT - ROW_STRIDE),
           }}
+          // Rows re-render when selection changes, not only when the data does.
+          extraData={selected}
           ListEmptyComponent={
             <ThemedText themeColor="textSecondary" style={styles.empty}>
               No notes yet. Tap + to write one.
             </ThemedText>
           }
+          // Handlers take the id or index, so a row's props only change with its own data or the
+          // selection, and NoteRow's memo skips the rest on every reorder.
           renderItem={({ item, index }) => (
-            <Pressable
-              onPress={() => router.push(`/note/${item.id}`)}
-              onTouchStart={() => (touchedRow.current = index)}>
-              <ThemedView type="backgroundElement" style={styles.row}>
-                <ThemedText numberOfLines={1}>{item.title || 'Untitled'}</ThemedText>
-              </ThemedView>
-            </Pressable>
+            <NoteRow
+              note={item}
+              index={index}
+              selecting={selecting}
+              selected={selected.has(item.id)}
+              onOpen={open}
+              onToggleSelected={toggleSelected}
+              onTouch={touchRow}
+            />
           )}
         />
 
         {firstNote && (
           <Pressable
             style={styles.cardPosition}
-            onPress={() => router.push(`/note/${firstNote.id}`)}
+            // The card covers the first note's row, so it stands in for it: open, or select.
+            onPress={selecting ? () => toggleSelected(firstNote.id) : () => open(firstNote.id)}
+            onLongPress={() => toggleSelected(firstNote.id)}
             accessibilityRole="button"
+            accessibilityState={selecting ? { selected: firstSelected } : undefined}
             accessibilityLabel={`Open ${firstNote.title || 'Untitled'}`}>
-            <ThemedView type="backgroundSelected" style={styles.card}>
+            <ThemedView
+              type="backgroundSelected"
+              style={[styles.card, { borderColor: firstSelected ? theme.accent : 'transparent' }]}>
               {/* Keyed by note so a change of first note runs the exit/enter animations. */}
               <Animated.View
                 key={firstNote.id}
                 style={styles.cardContent}
                 entering={scrollingDown ? ENTER_FROM_BELOW : ENTER_FROM_ABOVE}
                 exiting={scrollingDown ? EXIT_UPWARD : EXIT_DOWNWARD}>
-                <ThemedText type="smallBold" numberOfLines={1} style={styles.cardTitle}>
-                  {firstNote.title || 'Untitled'}
-                </ThemedText>
+                <View style={styles.cardTitleRow}>
+                  {selecting && <SelectMark selected={firstSelected} />}
+                  <ThemedText type="smallBold" numberOfLines={1} style={styles.cardTitle}>
+                    {firstNote.title || 'Untitled'}
+                  </ThemedText>
+                </View>
                 <View style={styles.preview}>
                   {firstNote.body ? (
                     <MarkdownText value={firstNote.body} selectable={false} />
@@ -209,16 +284,90 @@ export default function NotesScreen() {
   );
 }
 
+function SelectMark({ selected }: { selected: boolean }) {
+  const theme = useTheme();
+  return (
+    <MaterialIcons
+      name={selected ? 'check-box' : 'check-box-outline-blank'}
+      size={24}
+      color={selected ? theme.accent : theme.textSecondary}
+    />
+  );
+}
+
+type RowProps = {
+  note: Note;
+  index: number;
+  selecting: boolean;
+  selected: boolean;
+  onOpen: (id: number) => void;
+  onToggleSelected: (id: number) => void;
+  onTouch: (index: number) => void;
+};
+
+/** A note's title row. Tap to open, drag the handle to reorder, long press to start selecting. */
+const NoteRow = memo(function NoteRow({
+  note,
+  index,
+  selecting,
+  selected,
+  onOpen,
+  onToggleSelected,
+  onTouch,
+}: RowProps) {
+  const theme = useTheme();
+  const drag = useReorderableDrag();
+  const toggle = () => onToggleSelected(note.id);
+  return (
+    <Pressable
+      onPress={selecting ? toggle : () => onOpen(note.id)}
+      // Keep onLongPress set in both modes: Pressable only skips the tap on release if it still has a
+      // long-press handler then, and the long press that starts selecting has re-rendered this row.
+      onLongPress={toggle}
+      // Records which note the finger is on, for the card's drag-into-the-card behavior.
+      onTouchStart={() => onTouch(index)}
+      accessibilityState={selecting ? { selected } : undefined}
+      accessibilityLabel={note.title || 'Untitled'}>
+      <ThemedView
+        type="backgroundElement"
+        style={[styles.row, { borderColor: selected ? theme.accent : 'transparent' }]}>
+        {selecting && <SelectMark selected={selected} />}
+        <ThemedText numberOfLines={1} style={styles.rowTitle}>
+          {note.title || 'Untitled'}
+        </ThemedText>
+        {!selecting && (
+          <Pressable
+            // Start dragging as soon as the handle is touched; no long press needed.
+            onPressIn={drag}
+            hitSlop={Spacing.two}
+            accessibilityRole="button"
+            accessibilityLabel={`Reorder ${note.title || 'Untitled'}`}>
+            <MaterialIcons name="drag-indicator" size={22} color={theme.textSecondary} />
+          </Pressable>
+        )}
+      </ThemedView>
+    </Pressable>
+  );
+});
+
 const styles = StyleSheet.create({
   listArea: {
     flex: 1,
   },
   row: {
     height: ROW_HEIGHT,
+    // Spacing is a margin on each row, not `gap` on the list: the reorder library measures rows.
     marginBottom: ROW_GAP,
     paddingHorizontal: Spacing.three,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
     borderRadius: Spacing.three,
+    // Always 2px so selecting a note doesn't shift its layout, only recolors the border.
+    borderWidth: 2,
+  },
+  rowTitle: {
+    flex: 1,
   },
   cardPosition: {
     position: 'absolute',
@@ -229,6 +378,7 @@ const styles = StyleSheet.create({
   card: {
     height: CARD_HEIGHT,
     borderRadius: Spacing.three,
+    borderWidth: 2,
     overflow: 'hidden',
     elevation: 4,
     shadowColor: '#000',
@@ -240,7 +390,13 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     paddingHorizontal: Spacing.three,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
   cardTitle: {
+    flex: 1,
     fontSize: 16,
     lineHeight: ROW_HEIGHT,
   },

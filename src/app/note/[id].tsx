@@ -9,7 +9,7 @@ import { MarkdownText } from '@/components/markdown-text';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { deleteNote, getNote, updateNote } from '@/lib/notes';
+import { deleteNotes, getNote, updateNote } from '@/lib/notes';
 
 export default function NoteEditorScreen() {
   const db = useSQLiteContext();
@@ -42,7 +42,7 @@ export default function NoteEditorScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await deleteNote(db, id);
+          await deleteNotes(db, [id]);
           router.back();
         },
       },

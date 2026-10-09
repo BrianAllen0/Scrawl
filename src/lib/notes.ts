@@ -27,8 +27,9 @@ export function updateNote(db: SQLiteDatabase, id: number, fields: Pick<Note, 't
   return db.runAsync('UPDATE notes SET title = ?, body = ? WHERE id = ?', fields.title, fields.body, id);
 }
 
-export function deleteNote(db: SQLiteDatabase, id: number) {
-  return db.runAsync('DELETE FROM notes WHERE id = ?', id);
+export function deleteNotes(db: SQLiteDatabase, ids: number[]) {
+  const placeholders = ids.map(() => '?').join(', ');
+  return db.runAsync(`DELETE FROM notes WHERE id IN (${placeholders})`, ...ids);
 }
 
 /**
