@@ -30,6 +30,8 @@ const MIGRATIONS = [
     position    INTEGER NOT NULL
   );
   `,
+  // Completion time (ISO 8601), NULL while the todo is still open.
+  `ALTER TABLE todos ADD COLUMN completed_at TEXT;`,
 ];
 
 /** Passed to SQLiteProvider's onInit: brings the database up to the latest schema. */

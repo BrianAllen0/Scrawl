@@ -1,8 +1,7 @@
-import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { memo, useCallback, useEffect, useState } from 'react';
-import { Alert, BackHandler, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { memo, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import ReorderableList, {
   reorderItems,
   useReorderableDrag,
@@ -11,8 +10,11 @@ import ReorderableList, {
 
 import { IconButton } from '@/components/icon-button';
 import { Screen } from '@/components/screen';
+import { SelectionActions } from '@/components/selection-actions';
 import { ThemedText } from '@/components/themed-text';
+import { REORDER_AUTOSCROLL } from '@/constants/reorder';
 import { Spacing } from '@/constants/theme';
+import { useSelection } from '@/hooks/use-selection';
 import { useTheme } from '@/hooks/use-theme';
 import { saveOrder } from '@/lib/db';
 import {
@@ -24,33 +26,16 @@ import {
   type Grocery,
 } from '@/lib/groceries';
 
-const AUTOSCROLL_SPEED_SCALE = 5;
-
 export default function GroceriesScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
   const [groceries, setGroceries] = useState<Grocery[]>([]);
   const [newItem, setNewItem] = useState('');
-  // Ids picked for deletion. Non-empty means selection mode: long press starts it, taps toggle
-  // items, and it ends on delete, cancel, back, or deselecting the last item.
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const selecting = selected.size > 0;
+  const { selected, selecting, toggle: toggleSelected, clear: clearSelection } = useSelection();
 
   useEffect(() => {
     listGroceries(db).then(setGroceries);
   }, [db]);
-
-  // Android back leaves selection mode instead of leaving the screen.
-  useFocusEffect(
-    useCallback(() => {
-      if (!selecting) return;
-      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        setSelected(new Set());
-        return true;
-      });
-      return () => sub.remove();
-    }, [selecting]),
-  );
 
   // Each change updates the screen immediately and is written to the database alongside.
   function patch(id: number, fields: Partial<Grocery>) {
@@ -85,29 +70,10 @@ export default function GroceriesScreen() {
     );
   }
 
-  function toggleSelected(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
-  }
-
-  function confirmDelete() {
-    const count = selected.size;
-    Alert.alert(`Delete ${count} ${count === 1 ? 'item' : 'items'}?`, 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          const ids = [...selected];
-          setGroceries((list) => list.filter((g) => !selected.has(g.id)));
-          setSelected(new Set());
-          deleteGroceries(db, ids);
-        },
-      },
-    ]);
+  function deleteSelected() {
+    setGroceries((list) => list.filter((g) => !selected.has(g.id)));
+    deleteGroceries(db, [...selected]);
+    clearSelection();
   }
 
   return (
@@ -115,19 +81,12 @@ export default function GroceriesScreen() {
       title={selecting ? `${selected.size} selected` : 'Groceries'}
       actions={
         selecting && (
-          <>
-            <IconButton
-              icon="close"
-              label="Cancel selection"
-              onPress={() => setSelected(new Set())}
-            />
-            <IconButton
-              icon="delete"
-              label="Delete selected items"
-              color={theme.danger}
-              onPress={confirmDelete}
-            />
-          </>
+          <SelectionActions
+            count={selected.size}
+            noun={['item', 'items']}
+            onCancel={clearSelection}
+            onDelete={deleteSelected}
+          />
         )
       }>
       {/* While selecting, a hint takes the add bar's place at the same height, so the list doesn't
@@ -158,10 +117,7 @@ export default function GroceriesScreen() {
         data={groceries}
         onReorder={reorder}
         dragEnabled={!selecting}
-        // Defaults autoscroll at ~150dp/s on Android, far slower than a drag. 5x measured ~520dp/s (a
-        // brisk drag), and a larger edge zone starts it before the finger runs out of screen.
-        autoscrollSpeedScale={AUTOSCROLL_SPEED_SCALE}
-        autoscrollThreshold={0.15}
+        {...REORDER_AUTOSCROLL}
         keyExtractor={(g) => String(g.id)}
         keyboardShouldPersistTaps="handled"
         // Rows re-render when selection changes, not only when the data does.
