@@ -135,7 +135,7 @@ export default function NotesScreen() {
   return (
     <Screen
       title="Notes"
-      actions={<IconButton icon={{ ios: 'plus', android: 'add' }} label="New note" onPress={addNote} />}>
+      actions={<IconButton icon="add" label="New note" onPress={addNote} />}>
       <View
         style={styles.listArea}
         // Touch events bubble, so the touched row has recorded itself by the time this runs. A touch

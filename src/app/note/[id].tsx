@@ -58,11 +58,11 @@ export default function NoteEditorScreen() {
           headerRight: () => (
             <View style={styles.headerActions}>
               {editing ? (
-                <IconButton icon={{ ios: 'eye', android: 'visibility' }} label="Preview" onPress={() => setEditing(false)} />
+                <IconButton icon="visibility" label="Preview" onPress={() => setEditing(false)} />
               ) : (
-                <IconButton icon={{ ios: 'pencil', android: 'edit' }} label="Edit" onPress={() => setEditing(true)} />
+                <IconButton icon="edit" label="Edit" onPress={() => setEditing(true)} />
               )}
-              <IconButton icon={{ ios: 'trash', android: 'delete' }} label="Delete note" onPress={confirmDelete} />
+              <IconButton icon="delete" label="Delete note" onPress={confirmDelete} />
             </View>
           ),
         }}

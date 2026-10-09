@@ -46,3 +46,18 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     });
   }
 }
+
+export type OrderedTable = 'notes' | 'groceries' | 'todos';
+
+/** Saves a manual order: each id's position becomes its index in `ids`. */
+export async function saveOrder(db: SQLiteDatabase, table: OrderedTable, ids: number[]) {
+  await db.withTransactionAsync(async () => {
+    // `table` is one of three fixed names (it can't be a bound parameter), never user input.
+    const statement = await db.prepareAsync(`UPDATE ${table} SET position = ? WHERE id = ?`);
+    try {
+      for (const [position, id] of ids.entries()) await statement.executeAsync(position, id);
+    } finally {
+      await statement.finalizeAsync();
+    }
+  });
+}
