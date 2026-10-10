@@ -43,6 +43,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="note/[id]" options={{ title: '' }} />
             <Stack.Screen name="todo/[id]" options={{ title: '' }} />
+            <Stack.Screen name="grocery/[id]" options={{ title: '' }} />
           </Stack>
         </ThemeProvider>
       </SQLiteProvider>

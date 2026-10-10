@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { memo, useCallback, useState } from 'react';
@@ -19,7 +19,8 @@ import { useSelection } from '@/hooks/use-selection';
 import { useTheme } from '@/hooks/use-theme';
 import { saveOrder } from '@/lib/db';
 import {
-  addGrocery,
+  createGrocery,
+  deleteEmptyGroceries,
   deleteGroceries,
   listGroceries,
   renameGrocery,
@@ -29,15 +30,14 @@ import {
 
 export default function GroceriesScreen() {
   const db = useSQLiteContext();
-  const theme = useTheme();
   const [groceries, setGroceries] = useState<Grocery[]>([]);
-  const [newItem, setNewItem] = useState('');
   const { selected, selecting, toggle: toggleSelected, clear: clearSelection } = useSelection();
 
-  // Reload whenever the tab regains focus, e.g. after a backup is restored in Settings.
+  // Reload whenever the tab regains focus, e.g. coming back from the editor. No editor is open
+  // at that point, so it's also the safe moment to drop items that were created but left blank.
   useFocusEffect(
     useCallback(() => {
-      listGroceries(db).then(setGroceries);
+      deleteEmptyGroceries(db).then(() => listGroceries(db).then(setGroceries));
     }, [db]),
   );
 
@@ -46,12 +46,9 @@ export default function GroceriesScreen() {
     setGroceries((list) => list.map((g) => (g.id === id ? { ...g, ...fields } : g)));
   }
 
-  async function add() {
-    const item = newItem.trim();
-    if (!item) return;
-    setNewItem('');
-    const grocery = await addGrocery(db, item);
-    setGroceries((list) => [...list, grocery]);
+  async function addItem() {
+    const id = await createGrocery(db);
+    router.push(`/grocery/${id}`);
   }
 
   function setQuantity(id: number, quantity: number) {
@@ -84,39 +81,17 @@ export default function GroceriesScreen() {
     <Screen
       title={selecting ? `${selected.size} selected` : 'Groceries'}
       actions={
-        selecting && (
+        selecting ? (
           <SelectionActions
             count={selected.size}
             noun={['item', 'items']}
             onCancel={clearSelection}
             onDelete={deleteSelected}
           />
+        ) : (
+          <IconButton icon="add" label="New item" onPress={addItem} />
         )
       }>
-      {/* While selecting, a hint takes the add bar's place at the same height, so the list doesn't
-          jump out from under the finger that just long-pressed. */}
-      {/* Distinct keys so each is a fresh native view: reusing one across the swap made Android
-          drop the add bar's rounded corners. */}
-      {selecting ? (
-        <View key="hint" style={styles.addBar}>
-          <ThemedText themeColor="textSecondary">Tap items to select them</ThemedText>
-        </View>
-      ) : (
-        <View key="add" style={[styles.addBar, { backgroundColor: theme.backgroundElement }]}>
-          <TextInput
-            value={newItem}
-            onChangeText={setNewItem}
-            onSubmitEditing={add}
-            // Keep the keyboard up so several items can be added in a row.
-            submitBehavior="submit"
-            returnKeyType="done"
-            placeholder="Add an item…"
-            placeholderTextColor={theme.textSecondary}
-            style={[styles.addInput, { color: theme.text }]}
-          />
-          <IconButton icon="add" label="Add item" onPress={add} />
-        </View>
-      )}
       <ReorderableList
         data={groceries}
         onReorder={reorder}
@@ -128,7 +103,7 @@ export default function GroceriesScreen() {
         extraData={selected}
         ListEmptyComponent={
           <ThemedText themeColor="textSecondary" style={styles.empty}>
-            Nothing on the list. Add an item above.
+            Nothing on the list. Tap + to add an item.
           </ThemedText>
         }
         // Handlers are passed as-is (they take the id), so a row's props only change when its own
@@ -291,20 +266,6 @@ const GroceryRow = memo(function GroceryRow({
 });
 
 const styles = StyleSheet.create({
-  addBar: {
-    // Fixed so the selection hint that replaces it takes exactly the same space.
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: Spacing.three,
-    paddingLeft: Spacing.three,
-    paddingRight: Spacing.two,
-  },
-  addInput: {
-    flex: 1,
-    alignSelf: 'stretch',
-    fontSize: 16,
-  },
   row: {
     // Spacing is a margin on each row, not `gap` on the list: the reorder library measures rows to
     // slide them aside during a drag, and a list-level gap isn't part of that measurement, so rows
