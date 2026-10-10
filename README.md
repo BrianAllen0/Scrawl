@@ -42,6 +42,23 @@ npx expo start
 
 Then open it in Expo Go or a development build. `./dev.sh` starts an Android emulator and the dev server together.
 
+## Building an Android APK
+
+You can build a standalone APK locally without an Expo account. This requires the Android SDK and JDK 17.
+
+```bash
+npx expo prebuild -p android
+cd android
+./gradlew assembleRelease
+```
+
+The APK is written to `android/app/build/outputs/apk/release/app-release.apk`. Copy it to your phone and open it to install, allowing installs from unknown sources when prompted.
+
+- To build only for 64-bit ARM, which covers most modern phones and gives a much smaller APK, add `-PreactNativeArchitectures=arm64-v8a` to the Gradle command.
+- The release build is signed with the default debug key, which is fine for personal use. Updates install over the existing app as long as you build on the same machine.
+- After code changes, re-run `./gradlew assembleRelease`. Re-run `npx expo prebuild -p android --clean` only after changing `app.json` or adding a native dependency.
+- `prebuild` changes the `android` and `ios` scripts in `package.json` to `expo run:*`. Revert that change if you want to keep using Expo Go.
+
 ## License
 
 [MIT](LICENSE)
