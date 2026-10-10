@@ -1,6 +1,7 @@
+import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { memo, useEffect, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import ReorderableList, {
   reorderItems,
@@ -33,9 +34,12 @@ export default function GroceriesScreen() {
   const [newItem, setNewItem] = useState('');
   const { selected, selecting, toggle: toggleSelected, clear: clearSelection } = useSelection();
 
-  useEffect(() => {
-    listGroceries(db).then(setGroceries);
-  }, [db]);
+  // Reload whenever the tab regains focus, e.g. after a backup is restored in Settings.
+  useFocusEffect(
+    useCallback(() => {
+      listGroceries(db).then(setGroceries);
+    }, [db]),
+  );
 
   // Each change updates the screen immediately and is written to the database alongside.
   function patch(id: number, fields: Partial<Grocery>) {

@@ -4,13 +4,17 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { Appearance, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { getThemePreference } from '@/lib/appearance';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
 
 // Hold the splash screen until the icon font is ready, so no icon ever renders blank.
 SplashScreen.preventAutoHideAsync();
+
+// Apply the saved light/dark choice before the first frame, so the app never flashes the other theme.
+Appearance.setColorScheme(getThemePreference());
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
