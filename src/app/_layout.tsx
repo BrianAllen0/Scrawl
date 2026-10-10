@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { Appearance, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { useTheme } from '@/hooks/use-theme';
 import { getThemePreference } from '@/lib/appearance';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/lib/db';
 
@@ -18,6 +19,7 @@ Appearance.setColorScheme(getThemePreference());
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const theme = useTheme();
   const [fontsLoaded, fontError] = useFonts(MaterialIcons.font);
   const ready = fontsLoaded || fontError; // on a load error, show the app rather than hang
 
@@ -31,7 +33,13 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
+          {/* Header colors come from our palette directly, not the navigation theme, so they always follow dark mode. */}
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: theme.background },
+              headerTintColor: theme.text,
+              contentStyle: { backgroundColor: theme.background },
+            }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="note/[id]" options={{ title: '' }} />
             <Stack.Screen name="todo/[id]" options={{ title: '' }} />
