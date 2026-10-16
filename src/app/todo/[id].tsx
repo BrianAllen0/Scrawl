@@ -3,7 +3,8 @@ import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/d
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/icon-button';
@@ -91,89 +92,90 @@ export default function TodoEditorScreen() {
           ),
         }}
       />
-      <KeyboardAvoidingView behavior="padding" style={styles.container}>
-        <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          <TextInput
-            value={todo.task}
-            onChangeText={(task) => edit({ task })}
-            placeholder="What needs doing?"
-            placeholderTextColor={theme.textSecondary}
-            style={[styles.task, { color: theme.text }]}
-            autoFocus={!todo.task}
-            multiline
-            submitBehavior="blurAndSubmit"
-          />
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.form}
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={Spacing.three}>
+        <TextInput
+          value={todo.task}
+          onChangeText={(task) => edit({ task })}
+          placeholder="What needs doing?"
+          placeholderTextColor={theme.textSecondary}
+          style={[styles.task, { color: theme.text }]}
+          autoFocus={!todo.task}
+          multiline
+          submitBehavior="blurAndSubmit"
+        />
 
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            Due date
-          </ThemedText>
-          {Platform.OS === 'ios' ? (
-            <View style={styles.dueRow}>
-              <DateTimePicker
-                value={todo.due_date ? fromISODate(todo.due_date) : new Date()}
-                mode="date"
-                display="compact"
-                onValueChange={(_, date) => edit({ due_date: toISODate(date) })}
-              />
-              {due && <IconButton icon="close" label="Remove due date" onPress={() => edit({ due_date: null })} />}
-            </View>
-          ) : (
-            <View style={styles.dueRow}>
+        <ThemedText type="smallBold" themeColor="textSecondary">
+          Due date
+        </ThemedText>
+        {Platform.OS === 'ios' ? (
+          <View style={styles.dueRow}>
+            <DateTimePicker
+              value={todo.due_date ? fromISODate(todo.due_date) : new Date()}
+              mode="date"
+              display="compact"
+              onValueChange={(_, date) => edit({ due_date: toISODate(date) })}
+            />
+            {due && <IconButton icon="close" label="Remove due date" onPress={() => edit({ due_date: null })} />}
+          </View>
+        ) : (
+          <View style={styles.dueRow}>
+            <Pressable
+              onPress={pickDueDate}
+              accessibilityRole="button"
+              accessibilityLabel={due ? `Due ${due.label}, change` : 'Add due date'}
+              style={[styles.dueButton, { backgroundColor: theme.backgroundElement }]}>
+              <MaterialIcons name="event" size={20} color={due ? theme.text : theme.textSecondary} />
+              <ThemedText themeColor={due ? 'text' : 'textSecondary'}>{due ? due.label : 'Add due date'}</ThemedText>
+            </Pressable>
+            {due && <IconButton icon="close" label="Remove due date" onPress={() => edit({ due_date: null })} />}
+          </View>
+        )}
+
+        <ThemedText type="smallBold" themeColor="textSecondary">
+          Category
+        </ThemedText>
+        <TextInput
+          value={todo.category}
+          onChangeText={(category) => edit({ category })}
+          onEndEditing={(e) => edit({ category: e.nativeEvent.text.trim() })}
+          placeholder="e.g. Work, Home, Errands"
+          placeholderTextColor={theme.textSecondary}
+          style={inputStyle}
+          returnKeyType="done"
+        />
+        {suggestions.length > 0 && (
+          <View style={styles.chips}>
+            {suggestions.map((c) => (
               <Pressable
-                onPress={pickDueDate}
+                key={c}
+                onPress={() => edit({ category: c })}
                 accessibilityRole="button"
-                accessibilityLabel={due ? `Due ${due.label}, change` : 'Add due date'}
-                style={[styles.dueButton, { backgroundColor: theme.backgroundElement }]}>
-                <MaterialIcons name="event" size={20} color={due ? theme.text : theme.textSecondary} />
-                <ThemedText themeColor={due ? 'text' : 'textSecondary'}>{due ? due.label : 'Add due date'}</ThemedText>
+                accessibilityLabel={`Use category ${c}`}
+                style={[styles.chip, { backgroundColor: theme.accentBackground }]}>
+                <ThemedText type="small" style={{ color: theme.accent }}>
+                  {c}
+                </ThemedText>
               </Pressable>
-              {due && <IconButton icon="close" label="Remove due date" onPress={() => edit({ due_date: null })} />}
-            </View>
-          )}
+            ))}
+          </View>
+        )}
 
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            Category
-          </ThemedText>
-          <TextInput
-            value={todo.category}
-            onChangeText={(category) => edit({ category })}
-            onEndEditing={(e) => edit({ category: e.nativeEvent.text.trim() })}
-            placeholder="e.g. Work, Home, Errands"
-            placeholderTextColor={theme.textSecondary}
-            style={inputStyle}
-            returnKeyType="done"
-          />
-          {suggestions.length > 0 && (
-            <View style={styles.chips}>
-              {suggestions.map((c) => (
-                <Pressable
-                  key={c}
-                  onPress={() => edit({ category: c })}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use category ${c}`}
-                  style={[styles.chip, { backgroundColor: theme.accentBackground }]}>
-                  <ThemedText type="small" style={{ color: theme.accent }}>
-                    {c}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            Description
-          </ThemedText>
-          <TextInput
-            value={todo.description}
-            onChangeText={(description) => edit({ description })}
-            placeholder="Details, links, notes…"
-            placeholderTextColor={theme.textSecondary}
-            style={[inputStyle, styles.description]}
-            multiline
-            textAlignVertical="top"
-          />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <ThemedText type="smallBold" themeColor="textSecondary">
+          Description
+        </ThemedText>
+        <TextInput
+          value={todo.description}
+          onChangeText={(description) => edit({ description })}
+          placeholder="Details, links, notes…"
+          placeholderTextColor={theme.textSecondary}
+          style={[inputStyle, styles.description]}
+          multiline
+          textAlignVertical="top"
+        />
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

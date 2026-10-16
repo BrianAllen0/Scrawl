@@ -6,6 +6,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { useEffect } from 'react';
 import { Appearance, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { useTheme } from '@/hooks/use-theme';
 import { getThemePreference } from '@/lib/appearance';
@@ -31,22 +32,26 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          {/* Header colors come from our palette directly, not the navigation theme, so they always follow dark mode. */}
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: theme.background },
-              headerTintColor: theme.text,
-              contentStyle: { backgroundColor: theme.background },
-            }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="note/[id]" options={{ title: '' }} />
-            <Stack.Screen name="todo/[id]" options={{ title: '' }} />
-            <Stack.Screen name="grocery/[id]" options={{ title: '' }} />
-          </Stack>
-        </ThemeProvider>
-      </SQLiteProvider>
+      {/* The app draws edge-to-edge. Without these the provider offsets the app by the system bar heights on
+          Android, exposing the white window behind it as bands at the top and bottom. */}
+      <KeyboardProvider statusBarTranslucent navigationBarTranslucent preserveEdgeToEdge>
+        <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            {/* Header colors come from our palette directly, not the navigation theme, so they always follow dark mode. */}
+            <Stack
+              screenOptions={{
+                headerStyle: { backgroundColor: theme.background },
+                headerTintColor: theme.text,
+                contentStyle: { backgroundColor: theme.background },
+              }}>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="note/[id]" options={{ title: '' }} />
+              <Stack.Screen name="todo/[id]" options={{ title: '' }} />
+              <Stack.Screen name="grocery/[id]" options={{ title: '' }} />
+            </Stack>
+          </ThemeProvider>
+        </SQLiteProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

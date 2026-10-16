@@ -2,7 +2,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { memo, useCallback, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import ReorderableList, {
   reorderItems,
   useReorderableDrag,
@@ -92,33 +93,38 @@ export default function GroceriesScreen() {
           <IconButton icon="add" label="New item" onPress={addItem} />
         )
       }>
-      <ReorderableList
-        data={groceries}
-        onReorder={reorder}
-        dragEnabled={!selecting}
-        {...REORDER_AUTOSCROLL}
-        keyExtractor={(g) => String(g.id)}
-        keyboardShouldPersistTaps="handled"
-        // Rows re-render when selection changes, not only when the data does.
-        extraData={selected}
-        ListEmptyComponent={
-          <ThemedText themeColor="textSecondary" style={styles.empty}>
-            Nothing on the list. Tap + to add an item.
-          </ThemedText>
-        }
-        // Handlers are passed as-is (they take the id), so a row's props only change when its own
-        // data or the selection does, and GroceryRow's memo can skip the rest on every reorder.
-        renderItem={({ item }) => (
-          <GroceryRow
-            grocery={item}
-            selecting={selecting}
-            selected={selected.has(item.id)}
-            onToggleSelected={toggleSelected}
-            onQuantity={setQuantity}
-            onRename={rename}
-          />
-        )}
-      />
+      {/* Keep a renamed row above the keyboard. Android: shrinking the list makes the native ScrollView
+          scroll the focused input back into view. iOS: the list insets and scrolls itself natively. */}
+      <KeyboardAvoidingView behavior="padding" enabled={Platform.OS === 'android'} style={styles.list}>
+        <ReorderableList
+          data={groceries}
+          onReorder={reorder}
+          dragEnabled={!selecting}
+          {...REORDER_AUTOSCROLL}
+          keyExtractor={(g) => String(g.id)}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          // Rows re-render when selection changes, not only when the data does.
+          extraData={selected}
+          ListEmptyComponent={
+            <ThemedText themeColor="textSecondary" style={styles.empty}>
+              Nothing on the list. Tap + to add an item.
+            </ThemedText>
+          }
+          // Handlers are passed as-is (they take the id), so a row's props only change when its own
+          // data or the selection does, and GroceryRow's memo can skip the rest on every reorder.
+          renderItem={({ item }) => (
+            <GroceryRow
+              grocery={item}
+              selecting={selecting}
+              selected={selected.has(item.id)}
+              onToggleSelected={toggleSelected}
+              onQuantity={setQuantity}
+              onRename={rename}
+            />
+          )}
+        />
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -266,6 +272,9 @@ const GroceryRow = memo(function GroceryRow({
 });
 
 const styles = StyleSheet.create({
+  list: {
+    flex: 1,
+  },
   row: {
     // Spacing is a margin on each row, not `gap` on the list: the reorder library measures rows to
     // slide them aside during a drag, and a list-level gap isn't part of that measurement, so rows

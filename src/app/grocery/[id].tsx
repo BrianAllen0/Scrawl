@@ -1,7 +1,8 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/icon-button';
@@ -57,35 +58,36 @@ export default function GroceryEditorScreen() {
           headerRight: () => <IconButton icon="delete" label="Delete item" onPress={confirmDelete} />,
         }}
       />
-      <KeyboardAvoidingView behavior="padding" style={styles.container}>
-        <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          <TextInput
-            value={grocery.item}
-            onChangeText={rename}
-            onEndEditing={(e) => rename(e.nativeEvent.text.trim())}
-            placeholder="What do you need?"
-            placeholderTextColor={theme.textSecondary}
-            style={[styles.name, { color: theme.text }]}
-            autoFocus={!grocery.item}
-            returnKeyType="done"
-          />
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.form}
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={Spacing.three}>
+        <TextInput
+          value={grocery.item}
+          onChangeText={rename}
+          onEndEditing={(e) => rename(e.nativeEvent.text.trim())}
+          placeholder="What do you need?"
+          placeholderTextColor={theme.textSecondary}
+          style={[styles.name, { color: theme.text }]}
+          autoFocus={!grocery.item}
+          returnKeyType="done"
+        />
 
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            Quantity
+        <ThemedText type="smallBold" themeColor="textSecondary">
+          Quantity
+        </ThemedText>
+        <View style={[styles.stepper, { backgroundColor: theme.backgroundElement }]}>
+          <IconButton
+            icon="remove"
+            label="Decrease quantity"
+            onPress={() => setQuantity(Math.max(0, grocery.quantity - 1))}
+          />
+          <ThemedText style={styles.quantity} accessibilityLabel={`Quantity ${grocery.quantity}`}>
+            {grocery.quantity}
           </ThemedText>
-          <View style={[styles.stepper, { backgroundColor: theme.backgroundElement }]}>
-            <IconButton
-              icon="remove"
-              label="Decrease quantity"
-              onPress={() => setQuantity(Math.max(0, grocery.quantity - 1))}
-            />
-            <ThemedText style={styles.quantity} accessibilityLabel={`Quantity ${grocery.quantity}`}>
-              {grocery.quantity}
-            </ThemedText>
-            <IconButton icon="add" label="Increase quantity" onPress={() => setQuantity(grocery.quantity + 1)} />
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <IconButton icon="add" label="Increase quantity" onPress={() => setQuantity(grocery.quantity + 1)} />
+        </View>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }
