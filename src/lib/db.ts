@@ -32,6 +32,15 @@ const MIGRATIONS = [
   `,
   // Completion time (ISO 8601), NULL while the todo is still open.
   `ALTER TABLE todos ADD COLUMN completed_at TEXT;`,
+  // Repeat interval, e.g. 2 + 'week'. Both NULL for a todo that doesn't repeat.
+  `
+  ALTER TABLE todos ADD COLUMN repeat_every INTEGER CHECK (repeat_every >= 1);
+  ALTER TABLE todos ADD COLUMN repeat_unit TEXT CHECK (repeat_unit IN ('day', 'week', 'month'));
+  `,
+  // How many more times a repeating todo reopens; NULL repeats forever.
+  `ALTER TABLE todos ADD COLUMN repeats_left INTEGER CHECK (repeats_left >= 0);`,
+  // Day of the month a monthly repeat lands on; shorter months use their last day.
+  `ALTER TABLE todos ADD COLUMN repeat_day INTEGER CHECK (repeat_day BETWEEN 1 AND 31);`,
 ];
 
 /** Passed to SQLiteProvider's onInit: brings the database up to the latest schema. */

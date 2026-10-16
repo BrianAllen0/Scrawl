@@ -2,8 +2,8 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import Storage from 'expo-sqlite/kv-store';
-import { memo, useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { memo, useCallback, useEffect, useState } from 'react';
+import { AppState, Pressable, StyleSheet, View } from 'react-native';
 import ReorderableList, {
   useReorderableDrag,
   type ReorderableListReorderEvent,
@@ -24,7 +24,9 @@ import {
   createTodo,
   deleteEmptyTodos,
   deleteTodos,
+  describeRepeat,
   listTodos,
+  reopenRepeatingTodos,
   setTodoCompleted,
   updateTodo,
   type Todo,
@@ -59,13 +61,44 @@ export default function TodosScreen() {
   const { selected, selecting, toggle: toggleSelected, clear: clearSelection } = useSelection();
   const rows = buildRows(todos, collapsed, completedCollapsed);
 
+  // Repeating todos whose interval has passed go back to their category before every load.
+  const reload = useCallback(
+    () =>
+      reopenRepeatingTodos(db)
+        .then(() => listTodos(db))
+        .then(setTodos),
+    [db],
+  );
+
   // Reload whenever the tab regains focus, e.g. coming back from the editor. No editor is open
   // at that point, so it's also the safe moment to drop todos that were created but left blank.
   useFocusEffect(
     useCallback(() => {
-      deleteEmptyTodos(db).then(() => listTodos(db).then(setTodos));
-    }, [db]),
+      deleteEmptyTodos(db).then(reload);
+    }, [db, reload]),
   );
+
+  // Also on returning to the app, which doesn't refocus the tab: a daily todo is due again overnight.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => state === 'active' && reload());
+    return () => subscription.remove();
+  }, [reload]);
+
+  // And at midnight while the app stays open here, since a repeat comes due when the date changes.
+  // A second past it, so a timer firing a touch early still sees the new date.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const now = new Date();
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+      timer = setTimeout(() => {
+        reload();
+        schedule();
+      }, midnight.getTime() - now.getTime());
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [reload]);
 
   async function addTodo() {
     const id = await createTodo(db);
@@ -302,13 +335,21 @@ const TodoRow = memo(function TodoRow({
           numberOfLines={2}>
           {todo.task || 'Untitled todo'}
         </ThemedText>
-        {(due || (completed && todo.category)) && (
+        {(due || todo.repeat_unit !== null || (completed && !!todo.category)) && (
           <View style={styles.meta}>
             {due && (
               <View style={styles.due}>
                 <MaterialIcons name="event" size={14} color={dueColor} />
                 <ThemedText type="small" style={{ color: dueColor }}>
                   {due.label}
+                </ThemedText>
+              </View>
+            )}
+            {todo.repeat_every !== null && todo.repeat_unit !== null && (
+              <View style={styles.due}>
+                <MaterialIcons name="repeat" size={14} color={theme.textSecondary} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  {describeRepeat(todo.repeat_every, todo.repeat_unit, todo.repeats_left, todo.repeat_day)}
                 </ThemedText>
               </View>
             )}

@@ -10,7 +10,7 @@ import type { OrderedTable } from './db';
 const COLUMNS: Record<OrderedTable, readonly string[]> = {
   notes: ['id', 'title', 'body', 'position'],
   groceries: ['id', 'item', 'quantity', 'position'],
-  todos: ['id', 'task', 'due_date', 'category', 'description', 'position', 'completed_at'],
+  todos: ['id', 'task', 'due_date', 'category', 'description', 'position', 'completed_at', 'repeat_every', 'repeat_unit', 'repeats_left', 'repeat_day'],
 };
 const TABLES = Object.keys(COLUMNS) as OrderedTable[];
 

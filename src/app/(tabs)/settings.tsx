@@ -7,6 +7,7 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-n
 
 import { type IconName } from '@/components/icon-button';
 import { Screen } from '@/components/screen';
+import { SegmentedControl } from '@/components/segmented-control';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -81,7 +82,7 @@ export default function SettingsScreen() {
     <Screen title="Settings">
       <ScrollView contentContainerStyle={styles.content}>
         <Section title="Appearance">
-          <ThemePicker value={theme} onChange={chooseTheme} />
+          <SegmentedControl options={THEMES} value={theme} onChange={chooseTheme} label="Theme" />
         </Section>
 
         <Section title="Data">
@@ -147,27 +148,6 @@ function Row({ icon, label, detail, value, onPress }: RowProps) {
   );
 }
 
-function ThemePicker({ value, onChange }: { value: ThemePreference; onChange: (value: ThemePreference) => void }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.segments} accessibilityRole="radiogroup" accessibilityLabel="Theme">
-      {THEMES.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            onPress={() => onChange(option.value)}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
-            style={[styles.segment, selected && { backgroundColor: theme.accentBackground }]}>
-            <ThemedText style={selected && { color: theme.accent }}>{option.label}</ThemedText>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   content: {
     gap: Spacing.four,
@@ -190,17 +170,5 @@ const styles = StyleSheet.create({
   },
   rowText: {
     flex: 1,
-  },
-  segments: {
-    flexDirection: 'row',
-    padding: Spacing.one,
-    gap: Spacing.one,
-  },
-  segment: {
-    flex: 1,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Spacing.three - Spacing.one,
   },
 });
